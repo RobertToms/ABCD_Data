@@ -4,6 +4,8 @@
 # Date: July 23, 2025
 ###################
 
+# Used for ABCD 5.1 Data Release
+
 # The purpose of this script is to build a working list of male subjects in the ABCD Study, organized in priority by PLEs, with usable .tgz scans.
 # IT SHOULD BE UPDATED WHEN YEAR 3 & 4 QC DATA IS AVAILABLE
 
