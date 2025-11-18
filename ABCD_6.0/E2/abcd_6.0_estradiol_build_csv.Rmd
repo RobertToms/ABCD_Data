@@ -1,0 +1,557 @@
+---
+title: "abcd_6.0_estradiol_build_csv"
+author: "Aaron Clouse"
+conversion_to_6.0: "Robert Toms"
+date: "2025-10-30"
+output: html_document
+---
+
+#Load Packages 
+```{r}
+library(tidyverse)
+```
+
+#Read in the data
+```{r}
+datapath <- "/path/to/ABCD_6.0/Data"
+derivative_data <- "/path/to/derivative_data/6.0/"
+
+pds <- read_tsv(paste0(datapath, "/Physical_Health/ph_y_pds.tsv"))
+sex <- read_tsv(paste0(datapath, "/abcd_general/ab_g_stc.tsv"))
+
+#read in the estradiol data, long format 
+estradiol_long <- read_tsv(paste0(datapath, '/Physical_Health/ph_y_phs.tsv'))
+
+#read in abcd subject demographics 
+demo <- read_tsv(paste0(datapath, "/abcd_general/ab_g_stc.tsv"))
+interview_age <- read_tsv(paste0(datapath, "/abcd_general/ab_g_dyn.tsv"))
+#read in the slope filter. This will be used to isolate data point that are premenarche for our calculations based on Parent report. 
+Parent_e2slope_filter <- read_csv(paste0(derivative_data, "Youth_PrePost_Menarche_9_15_25.csv")) %>% 
+  select(participant_id, first_post_session, Inconsistent_Reporting_Y1N0)
+#read in the slope filter. This will be used to isolate data point that are premenarche for our calculations based on Youth report. 
+Youth_e2slope_filter <- read_csv(paste0(derivative_data, "Parent_PrePost_Menarche_9_15_25.csv")) %>% 
+  select(participant_id, first_post_session, Inconsistent_Reporting_Y1N0)
+# This is a CSV used to determine the quality of the Saliva sample.
+saliva <- read_csv(paste0(derivative_data, "E2_Exclusions_10_1_25.csv")) %>%
+  select(participant_id , session_id, E2mean, `Excluded?`)
+```
+
+
+#select relevant columns and make wide, remove males
+```{r}
+#merge saliva into estradiol
+estradiol_long <- estradiol_long %>%
+  full_join(saliva, by = c("participant_id", "session_id"))
+
+### Sanity Check Section-- make sure that the E2mean column is different ph_y_phs__hse_mean. E2mean is the correct column to use because exclusion due to saliva quality affected means, and E2means are recalculated taking that into account. 
+estradiol_long <- estradiol_long %>%
+  mutate(ph_y_phs__hse_mean = ifelse(`Excluded?`== 1, NA, ph_y_phs__hse_mean))
+
+estradiol_long <- estradiol_long %>%
+  mutate(mean_match = ifelse(E2mean == ph_y_phs__hse_mean, TRUE, FALSE))
+
+### End sanity check
+
+# Implement salivary Exclusions
+estradiol_long <- estradiol_long %>%
+  mutate(E2mean = ifelse(`Excluded?`== 1, NA, E2mean))
+
+#select only relevant columns for our analysis
+estradiol_long <- estradiol_long %>% 
+  select(participant_id, #ABCD NDA subject ID Number 
+         session_id, #Visit (Baseline, 1,2,3,4,5,6 year follow up)
+         E2mean #Estradiol means
+  )
+
+# merge in biological sex data, remove males
+estradiol_long <- estradiol_long %>%
+  left_join(demo %>% select(participant_id, ab_g_stc__cohort_sex),
+            by = "participant_id") %>%
+  filter(ab_g_stc__cohort_sex == 2) %>%
+  select(-ab_g_stc__cohort_sex)
+
+```
+
+##PARENT REPORT: RUN THIS SECTION TO GENERATE THE PRE-MENARCHE RAW DIFFERENCES AND SLOPE DATA
+```{r}
+#verify "NA" is read as NA, not as a string 
+Parent_e2slope_filter$first_post_session[Parent_e2slope_filter$first_post_session == "NA"] <- NA
+
+#add the e2slopefilter column to the ParentEstradiol data, specifically to every instance where subject_id matches 
+ParentEstradiol_long <- merge(estradiol_long, Parent_e2slope_filter, by = "participant_id", all.x = TRUE)
+sum(!is.na(ParentEstradiol_long$E2mean))
+#for participants at baseline, if e2slopefilter says they were postmenarche at baseline, remove that value from our calculations. 
+ParentEstradiol_long$E2mean[ParentEstradiol_long$session_id == "ses-00A" & 
+                              ParentEstradiol_long$first_post_session == 0] <- NA
+#for participants at the year 1 follow up, if they were postmenarche at year 1 or baseline, remove that value from our calculations.
+ParentEstradiol_long$E2mean[ParentEstradiol_long$session_id == "ses-01A" & 
+                              ParentEstradiol_long$first_post_session %in% c(0, 1)] <- NA
+#for participants at the year 2 follow up, if they were postmenarche at year2, year 1 or baseline, remove that value from our calculations.
+ParentEstradiol_long$E2mean[ParentEstradiol_long$session_id == "ses-02A" & 
+                              ParentEstradiol_long$first_post_session %in% c(0, 1, 2)] <- NA
+#for participants at the year 3 follow up, if they were postmenarche at year 3, year 2, year 1 or baseline, remove that value from our calculations.
+ParentEstradiol_long$E2mean[ParentEstradiol_long$session_id == "ses-03A" & 
+                              ParentEstradiol_long$first_post_session %in% c(0, 1, 2, 3)] <- NA
+#for participants at the year 4 follow up, if they were postmenarche at year 4, year 3, year 2, year 1 or baseline, remove that value from our calculations.
+ParentEstradiol_long$E2mean[ParentEstradiol_long$session_id == "ses-04A" & 
+                              ParentEstradiol_long$first_post_session %in% c(0, 1, 2, 3, 4)] <- NA
+#for participants at the year 5 follow up, if they were postmenarche at year 5, year 4, year 3, year 2, year 1 or baseline, remove that value from our calculations.
+ParentEstradiol_long$E2mean[ParentEstradiol_long$session_id == "ses-05A" & 
+                              ParentEstradiol_long$first_post_session %in% c(0, 1, 2, 3, 4, 5)] <- NA
+#for participants at the year 6 follow up, if they were postmenarche at year 6, year 5, year 4, year 3, year 2, year 1 or baseline, remove that value from our calculations.
+ParentEstradiol_long$E2mean[ParentEstradiol_long$session_id == "ses-06A" & 
+                              ParentEstradiol_long$first_post_session %in% c(0, 1, 2, 3, 4, 5, 6)] <- NA
+sum(!is.na(ParentEstradiol_long$E2mean))
+#this code ensures that only premenarche data points are included in the calculation of slopes and raw differences.
+```
+
+##YOUTH REPORT: RUN THIS SECTION TO GENERATE THE PRE-MENARCHE RAW DIFFERENCES AND SLOPE DATA
+```{r}
+Youth_e2slope_filter$first_post_session[Youth_e2slope_filter$first_post_session == "NA"] <- NA
+
+#add the e2slopefilter column to the YouthEstradiol data, specifically to every instance where subject_id matches 
+YouthEstradiol_long <- merge(estradiol_long, Youth_e2slope_filter, by = "participant_id", all.x = TRUE)
+sum(!is.na(YouthEstradiol_long$E2mean))
+#for participants at baseline, if e2slopefilter says they were postmenarche at baseline, remove that value from our calculations. 
+YouthEstradiol_long$E2mean[YouthEstradiol_long$session_id == "ses-00A" & 
+                             YouthEstradiol_long$first_post_session == 0] <- NA
+#for participants at the year 1 follow up, if they were postmenarche at year 1 or baseline, remove that value from our calculations.
+YouthEstradiol_long$E2mean[YouthEstradiol_long$session_id == "ses-01A" & 
+                             YouthEstradiol_long$first_post_session %in% c(0, 1)] <- NA
+#for participants at the year 2 follow up, if they were postmenarche at year2, year 1 or baseline, remove that value from our calculations.
+YouthEstradiol_long$E2mean[YouthEstradiol_long$session_id == "ses-02A" & 
+                             YouthEstradiol_long$first_post_session %in% c(0, 1, 2)] <- NA
+#for participants at the year 3 follow up, if they were postmenarche at year 3, year 2, year 1 or baseline, remove that value from our calculations.
+YouthEstradiol_long$E2mean[YouthEstradiol_long$session_id == "ses-03A" & 
+                             YouthEstradiol_long$first_post_session %in% c(0, 1, 2, 3)] <- NA
+#for participants at the year 4 follow up, if they were postmenarche at year 4, year 3, year 2, year 1 or baseline, remove that value from our calculations.
+YouthEstradiol_long$E2mean[YouthEstradiol_long$session_id == "ses-04A" & 
+                             YouthEstradiol_long$first_post_session %in% c(0, 1, 2, 3, 4)] <- NA
+#for participants at the year 5 follow up, if they were postmenarche at year 5, year 4, year 3, year 2, year 1 or baseline, remove that value from our calculations.
+YouthEstradiol_long$E2mean[YouthEstradiol_long$session_id == "ses-05A" & 
+                             YouthEstradiol_long$first_post_session %in% c(0, 1, 2, 3, 4, 5)] <- NA
+#for participants at the year 6 follow up, if they were postmenarche at year 6, year 5, year 4, year 3, year 2, year 1 or baseline, remove that value from our calculations.
+YouthEstradiol_long$E2mean[YouthEstradiol_long$session_id == "ses-06A" & 
+                             YouthEstradiol_long$first_post_session %in% c(0, 1, 2, 3, 4, 5, 6)] <- NA
+sum(!is.na(YouthEstradiol_long$E2mean))
+#this code ensures that only premenarche data points are included in the calculation of slopes and raw differences. 
+```
+
+
+##Add demographics to the ParentEstradiol table
+```{r}
+#Format wide ABCD ParentEstradiol data according to subjectID and session
+ParentEstradiol <- ParentEstradiol_long %>%
+  pivot_wider(names_from = session_id, values_from = c(E2mean)) %>%
+  select(participant_id, first_post_session, Inconsistent_Reporting_Y1N0, `ses-00A`, `ses-01A`, `ses-02A`, `ses-03A`, `ses-04A`, `ses-05A`, `ses-06A`)
+
+#add sex to the ParentEstradiol data frame by matching subject IDs 
+ParentEstradiol <- ParentEstradiol %>%
+  left_join(demo %>% select(participant_id, ab_g_stc__cohort_sex),
+            by = "participant_id")
+```
+
+##Add demographics to the YouthEstradiol table
+```{r}
+#Format wide ABCD YouthEstradiol data according to subjectID and session
+YouthEstradiol <- YouthEstradiol_long %>%
+  pivot_wider(names_from = session_id, values_from = c(E2mean)) %>%
+  select(participant_id, first_post_session, Inconsistent_Reporting_Y1N0, `ses-00A`, `ses-01A`, `ses-02A`, `ses-03A`, `ses-04A`, `ses-05A`, `ses-06A`)
+
+#add sex to the YouthEstradiol data frame by matching subject IDs 
+YouthEstradiol <- YouthEstradiol %>%
+  left_join(demo %>% select(participant_id, ab_g_stc__cohort_sex),
+            by = "participant_id")
+```
+
+##PARENT REPORT: get total counts by sex for the data frame
+```{r}
+#sum the number of available timepoints for each participant 
+ParentEstradiol$total_premenarche_visits <- rowSums(!is.na(ParentEstradiol[, c("ses-00A",
+                                                                               "ses-01A",
+                                                                               "ses-02A",
+                                                                               "ses-03A",
+                                                                               "ses-04A",
+                                                                               "ses-05A",
+                                                                               "ses-06A")]))
+#display timepoint totals, sanity check that males have been removed
+table(ParentEstradiol$total_premenarche_visits[ParentEstradiol$ab_g_stc__cohort_sex == 1])
+table(ParentEstradiol$total_premenarche_visits[ParentEstradiol$ab_g_stc__cohort_sex == 2])
+
+```
+
+##YOUTH REPORT: get total counts by sex for the data frame
+```{r}
+#sum the number of available timepoints for each participant 
+YouthEstradiol$total_premenarche_visits <- rowSums(!is.na(YouthEstradiol[, c("ses-00A",
+                                                                             "ses-01A",
+                                                                             "ses-02A",
+                                                                             "ses-03A",
+                                                                             "ses-04A",
+                                                                             "ses-05A",
+                                                                             "ses-06A")]))
+#display timepoint totals, sanity check that males have been removed
+table(YouthEstradiol$total_premenarche_visits[YouthEstradiol$ab_g_stc__cohort_sex == 1])
+table(YouthEstradiol$total_premenarche_visits[YouthEstradiol$ab_g_stc__cohort_sex == 2])
+
+```
+
+##PARENT REPORT: Simple Raw difference Score and Scale (baseline and first follow up only)
+
+```{r}
+#if values are present for baseline and year 1, but no other timepoints, calculate the raw difference score. 
+ParentEstradiol <- ParentEstradiol %>%
+  mutate(
+    raw_difference_premenarche_score = ifelse(!is.na(`ses-00A`) &
+                                                !is.na(`ses-01A`) &
+                                                is.na(`ses-02A`) &
+                                                is.na(`ses-03A`) &
+                                                is.na(`ses-04A`) &
+                                                is.na(`ses-05A`) &
+                                                is.na(`ses-06A`),
+                                              `ses-01A` - `ses-00A`, 
+                                              NA))
+```
+
+
+##YOUTH REPORT: Simple Raw difference Score and Scale (baseline and first follow up only)
+
+```{r}
+#if values are present for baseline and year 1, but no other timepoints, calculate the raw difference score. 
+YouthEstradiol <- YouthEstradiol %>%
+  mutate(
+    raw_difference_premenarche_score = ifelse(!is.na(`ses-00A`) &
+                                                !is.na(`ses-01A`) &
+                                                is.na(`ses-02A`) &
+                                                is.na(`ses-03A`) &
+                                                is.na(`ses-04A`) &
+                                                is.na(`ses-05A`) &
+                                                is.na(`ses-06A`),
+                                              `ses-01A` - `ses-00A`, 
+                                              NA))
+```
+
+##PARENT REPORT: ACCURATE AGE SECTION 
+## adjust the long for linear model calculations by adding age and estimating age at each timepoint. build the long df for calcualtion per subject
+```{r}
+interview_age <- interview_age %>%
+  select(participant_id,
+         session_id,
+         ab_g_dyn__visit_age) %>%
+  rename(interview_age = ab_g_dyn__visit_age)
+
+ParentEstradiol_lm <- ParentEstradiol_long %>%
+  left_join(interview_age, by = c("participant_id", "session_id"))
+
+#remove timepoints that do not have ParentEstradiol readings
+no_ParentEstradiol_value <- ParentEstradiol_lm %>%
+  filter(is.na(E2mean) | E2mean == "") %>%
+  distinct(participant_id) %>%
+  pull(participant_id)
+
+# before: 23691
+ParentEstradiol_lm <- ParentEstradiol_lm %>%
+  filter(!is.na(E2mean) & E2mean != "")
+# after: 11530
+
+#remove subs that have a raw score (2 timepoints, one of them at baseline)
+Parent_already_calculated_raw <- ParentEstradiol %>% 
+  filter(!is.na(raw_difference_premenarche_score) & raw_difference_premenarche_score != "") %>%
+  pull(participant_id)
+
+# before: 11530
+ParentEstradiol_lm <- ParentEstradiol_lm %>% 
+  filter(!participant_id %in% Parent_already_calculated_raw)
+# after: 7796
+
+#remove other subs with less than 3 timepoints- if they have 2 timepoints, a raw difference score is calculated. 
+Parent_less_than_three <- ParentEstradiol_lm %>%
+  group_by(participant_id) %>%
+  filter(n() < 3) %>%
+  distinct(participant_id) %>%
+  pull(participant_id)
+
+# before: 7796
+ParentEstradiol_lm <- ParentEstradiol_lm %>%
+  group_by(participant_id) %>%
+  filter(n() >= 3) %>%
+  ungroup()
+# after: 5706
+```
+
+
+##YOUTH REPORT: ACCURATE AGE SECTION 
+## adjust the long for linear model calculations by adding age and estimating age at each timepoint. build the long df for calcualtion per subject
+```{r}
+YouthEstradiol_lm <- YouthEstradiol_long %>%
+  left_join(interview_age, by = c("participant_id", "session_id"))
+
+#remove timepoints that do not have ParentEstradiol readings
+no_YouthEstradiol_value <- YouthEstradiol_lm %>%
+  filter(is.na(E2mean) | E2mean == "") %>%
+  distinct(participant_id) %>%
+  pull(participant_id)
+
+# before: 23961
+YouthEstradiol_lm <- YouthEstradiol_lm %>%
+  filter(!is.na(E2mean) & E2mean != "")
+# after: 11386
+
+#remove subs that have a raw score (2 timepoints, one of them at baseline)
+Youth_already_calculated_raw <- YouthEstradiol %>% 
+  filter(!is.na(raw_difference_premenarche_score) & raw_difference_premenarche_score != "") %>%
+  pull(participant_id)
+
+# before: 11386
+YouthEstradiol_lm <- YouthEstradiol_lm %>% 
+  filter(!participant_id %in% Parent_already_calculated_raw)
+# after: 7676
+
+#remove other subs with less than 3 timepoints- if they have 2 timepoints, a raw difference score is calculated. 
+Youth_less_than_three <- YouthEstradiol_lm %>%
+  group_by(participant_id) %>%
+  filter(n() < 3) %>%
+  distinct(participant_id) %>%
+  pull(participant_id)
+
+# before: 7676
+YouthEstradiol_lm <- YouthEstradiol_lm %>%
+  group_by(participant_id) %>%
+  filter(n() >= 3) %>%
+  ungroup()
+# after: 5303
+```
+
+##PARENT REPORT: Calculate the slope for 3-7 timepoints and add to the ParentEstradiol data frame 
+
+```{r}
+#extract the slope of the linear model for each subject 
+ParentEstradiol_slopes <- ParentEstradiol_lm %>%
+  group_by(participant_id) %>%
+  summarise(slope_E2mean_premenarche = lm(E2mean ~ interview_age)$coef[2])
+
+#attach the e2 slopes back to the original ParentEstradiol data frame by participant
+ParentEstradiol <- ParentEstradiol %>%
+  left_join(ParentEstradiol_slopes %>% select(participant_id, slope_E2mean_premenarche), by = "participant_id")
+
+#scale raw difference scores 
+ParentEstradiol$slope_E2mean_premenarche_scale <- as.numeric(scale(ParentEstradiol$slope_E2mean_premenarche)) 
+```
+
+##YOUTH REPORT: Calculate the slope for 3-7 timepoints and add to the YouthEstradiol data frame 
+
+```{r}
+#extract the slope of the linear model for each subject 
+YouthEstradiol_slopes <- YouthEstradiol_lm %>%
+  group_by(participant_id) %>%
+  summarise(slope_E2mean_premenarche = lm(E2mean ~ interview_age)$coef[2])
+
+#attach the e2 slopes back to the original YouthEstradiol data frame by participant
+YouthEstradiol <- YouthEstradiol %>%
+  left_join(YouthEstradiol_slopes %>% select(participant_id, slope_E2mean_premenarche), by = "participant_id")
+
+#scale raw difference scores 
+YouthEstradiol$slope_E2mean_premenarche_scale <- as.numeric(scale(YouthEstradiol$slope_E2mean_premenarche)) 
+```
+
+##PARENT REPORT: Complex raw difference score and scale (follow up greater than 1yr apart)
+
+```{r}
+#creates a new data frame for participants that do not have a calculated slope or raw difference score 
+ParentComplexRaw <- ParentEstradiol %>%
+  filter(is.na(raw_difference_premenarche_score) & is.na(slope_E2mean_premenarche))
+
+#remove participants from the data frame have no data at any timepoint 
+ParentComplexRaw <- ParentComplexRaw %>%
+  filter(!if_all(c(`ses-00A`,
+                  `ses-01A`,
+                  `ses-02A`,
+                  `ses-03A`,
+                  `ses-04A`,
+                  `ses-05A`,
+                  `ses-06A`), ~ is.na(.)))
+
+#keep only participants that have 2 timepoints of data 
+ParentComplexRaw <- ParentComplexRaw %>%
+  filter(total_premenarche_visits == 2)
+
+#identify columns that contain e2 data
+timepoint_cols <- c('ses-00A',
+                  'ses-01A',
+                  'ses-02A',
+                  'ses-03A',
+                  'ses-04A',
+                  'ses-05A',
+                  'ses-06A')
+
+#function determines the position of e2 columns that contain values, and returns the difference (the amount of time in years) between those two timepoints 
+time_between_visits <- function(visit, timepoints) {
+  has_value <- which(!is.na(visit[timepoints]))
+  if (length(has_value) == 2) {
+    return(diff(has_value))
+  } else {
+    return(NA)
+  }
+}
+
+#apply the time between visits function to each row of the data frame 
+ParentComplexRaw$yrs_between_visits <- apply(ParentComplexRaw, 1, 
+                                        time_between_visits, 
+                                        timepoints = timepoint_cols)
+
+#function isolates the two values present for each participant, finds the difference between the two 
+calculate_raw_diff <- function(visit, timepoints) {
+  values <- visit[timepoints]
+  values <- as.numeric(values[!is.na(values)])
+  if (length(values) == 2) {
+    return(values[2] - values[1])
+  } else {
+    return(NA)
+  }
+}
+
+#apply the calculate raw diff function rowwise to determine raw difference score in participants with timepoints greater than yr apart 
+ParentComplexRaw$raw_difference_premenarche_score <- apply(ParentComplexRaw, 1, 
+                                        calculate_raw_diff, 
+                                        timepoints = timepoint_cols)
+
+#note that the participants raw difference score was greater that 1yr apart or not at baseline
+ParentComplexRaw <- ParentComplexRaw %>%
+  mutate(
+    notes = ifelse(yrs_between_visits == 1,
+                   paste("two timepoints",
+                         ParentComplexRaw$yrs_between_visits,
+                         "years apart, not at baseline"),
+                   paste("two timepoints",
+                         ParentComplexRaw$yrs_between_visits,
+                         "years apart")))
+
+#isolate raw scores and notes to be included in the greater e2 data table 
+ParentComplexRaw <- ParentComplexRaw %>%
+  select(participant_id, raw_difference_premenarche_score, notes)
+
+#add the complex raw scores back into the e2 table by subject ID 
+ParentEstradiol <- ParentEstradiol %>% 
+  left_join(ParentComplexRaw %>% 
+              select(participant_id, 
+                     raw_difference_premenarche_score), 
+            by = "participant_id") %>%
+  mutate(raw_difference_premenarche_score = coalesce(raw_difference_premenarche_score.y, raw_difference_premenarche_score.x)) %>%
+  select(-raw_difference_premenarche_score.y, -raw_difference_premenarche_score.x)
+
+#scale raw difference scores 
+ParentEstradiol$raw_difference_premenarche_scale <- as.numeric(scale(ParentEstradiol$raw_difference_premenarche_score))
+
+#add the notes column to the e2 data frame 
+ParentEstradiol <- ParentEstradiol %>% 
+  left_join(ParentComplexRaw %>% 
+              select(participant_id, 
+                     notes), 
+            by = "participant_id")
+```
+
+
+##YOUTH REPORT: Complex raw difference score and scale (follow up greater than 1yr apart)
+
+```{r}
+#creates a new data frame for participants that do not have a calculated slope or raw difference score 
+YouthComplexRaw <- YouthEstradiol %>%
+  filter(is.na(raw_difference_premenarche_score) & is.na(slope_E2mean_premenarche))
+
+#remove participants from the data frame have no data at any timepoint 
+YouthComplexRaw <- YouthComplexRaw %>%
+  filter(!if_all(c(`ses-00A`,
+                  `ses-01A`,
+                  `ses-02A`,
+                  `ses-03A`,
+                  `ses-04A`,
+                  `ses-05A`,
+                  `ses-06A`), ~ is.na(.)))
+
+#keep only participants that have 2 timepoints of data 
+YouthComplexRaw <- YouthComplexRaw %>%
+  filter(total_premenarche_visits == 2)
+
+#identify columns that contain e2 data
+timepoint_cols <- c('ses-00A',
+                  'ses-01A',
+                  'ses-02A',
+                  'ses-03A',
+                  'ses-04A',
+                  'ses-05A',
+                  'ses-06A')
+
+#function determines the position of e2 columns that contain values, and returns the difference (the amount of time in years) between those two timepoints 
+time_between_visits <- function(visit, timepoints) {
+  has_value <- which(!is.na(visit[timepoints]))
+  if (length(has_value) == 2) {
+    return(diff(has_value))
+  } else {
+    return(NA)
+  }
+}
+
+#apply the time between visits function to each row of the data frame 
+YouthComplexRaw$yrs_between_visits <- apply(YouthComplexRaw, 1, 
+                                        time_between_visits, 
+                                        timepoints = timepoint_cols)
+
+#function isolates the two values present for each participant, finds the difference between the two 
+calculate_raw_diff <- function(visit, timepoints) {
+  values <- visit[timepoints]
+  values <- as.numeric(values[!is.na(values)])
+  if (length(values) == 2) {
+    return(values[2] - values[1])
+  } else {
+    return(NA)
+  }
+}
+
+#apply the calculate raw diff function rowwise to determine raw difference score in participants with timepoints greater than yr apart 
+YouthComplexRaw$raw_difference_premenarche_score <- apply(YouthComplexRaw, 1, 
+                                        calculate_raw_diff, 
+                                        timepoints = timepoint_cols)
+
+#note that the participants raw difference score was greater that 1yr apart or not at baseline
+YouthComplexRaw <- YouthComplexRaw %>%
+  mutate(
+    notes = ifelse(yrs_between_visits == 1,
+                   paste("two timepoints",
+                         YouthComplexRaw$yrs_between_visits,
+                         "years apart, not at baseline"),
+                   paste("two timepoints",
+                         YouthComplexRaw$yrs_between_visits,
+                         "years apart")))
+
+#isolate raw scores and notes to be included in the greater e2 data table 
+YouthComplexRaw <- YouthComplexRaw %>%
+  select(participant_id, raw_difference_premenarche_score, notes)
+
+#add the complex raw scores back into the e2 table by subject ID 
+YouthEstradiol <- YouthEstradiol %>% 
+  left_join(YouthComplexRaw %>% 
+              select(participant_id, 
+                     raw_difference_premenarche_score), 
+            by = "participant_id") %>%
+  mutate(raw_difference_premenarche_score = coalesce(raw_difference_premenarche_score.y, raw_difference_premenarche_score.x)) %>%
+  select(-raw_difference_premenarche_score.y, -raw_difference_premenarche_score.x)
+
+#scale raw difference scores 
+YouthEstradiol$raw_difference_premenarche_scale <- as.numeric(scale(YouthEstradiol$raw_difference_premenarche_score))
+
+#add the notes column to the e2 data frame 
+YouthEstradiol <- YouthEstradiol %>% 
+  left_join(YouthComplexRaw %>% 
+              select(participant_id, 
+                     notes), 
+            by = "participant_id")
+```
+
+
+#write CSV section
+
+```{r}
+#write the completed data frame to a csv 
+write_csv(ParentEstradiol, (paste0(derivative_data, "PremenarcheE2Slopes_6.0_ParentReport_10302025.csv")))
+write_csv(YouthEstradiol, (paste0(derivative_data, "PremenarcheE2Slopes_6.0_YouthReport_10302025.csv")))
+```
