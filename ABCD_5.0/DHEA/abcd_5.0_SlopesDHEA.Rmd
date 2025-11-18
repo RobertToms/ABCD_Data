@@ -1,0 +1,514 @@
+---
+title: "abcd_5.0_SlopesDHEA.Rmd"
+author: "Aaron Clouse & Robert Toms"
+date: "2025-10-16"
+output: html_document
+---
+##Load Packages 
+```{r}
+library(tidyverse)
+```
+
+##Read in the data
+```{r}
+#______________________________________________________________________________
+
+# REQUIRED: paths to your raw and derivative data
+sourcepath <- "/path/to/ABCD_5.0/core/"
+derivative_data <- "/path/to/derivative_data/5.0/"
+
+#______________________________________________________________________________
+
+#REQUIRED: this should be a csv of interview ages provided by ABCD.
+#note that this script makes the assumption that ages are in MONTHS. Three columns are required:
+
+# 1. interview_age, which is the age of the participant at that eventname in MONTHS 
+# 2. src_subject_id
+# 3. eventname
+
+interview_age <- read_csv(paste0(sourcepath, "abcd-general/abcd_y_lt.csv"))
+#______________________________________________________________________________
+
+#REQUIRED: Where do you want this file written to and how would you like it named?
+# write_file: the general slope/difference data for both males and females
+# parent_file: premenarche slope/difference data for parent reports
+# youth_file: premenarche slope/differerence data for youth reports
+
+write_file <- paste0(derivative_data, "abcd_5.0_DHEA_slopes_10_16_25.csv")
+parent_file <- paste0(derivative_data, "parent_5.0_premenarche_DHEA_slopes_10_16_25.csv")
+youth_file <- paste0(derivative_data, "youth_5.0_premenarche_DHEA_slopes_10_16_25.csv")
+#______________________________________________________________________________
+
+#OPTIONAL: this should be a demographics csv provided by ABCD. 
+# this is only used to include a sex variable on the output csv. it needs three columns: 
+
+# 1. demo_sex_v2 
+# 2. src_subject_id
+# 3. eventname
+
+#NOTE: this is an optional input. FEEL FREE TO SKIP OVER THE "DEMOGRAPHICS" section below, 
+#it has no effect on the calculation of slopes or differences.
+
+demo <- read_csv(paste0(sourcepath, "abcd-general/abcd_p_demo.csv"))
+#______________________________________________________________________________
+
+#OPTIONAL: These are csv files (5.0_Youth_PrePost_Menarche_10_1_25.csv, 5.0_Parent_PrePost_Menarche_10_1_25.csv) that identifies when participants report menarche.
+# It was created using the PrePost_Menarche_5.0.R file. 
+
+# they have four required columns: 
+# 1. first_post_event: identifies the visit at which individuals are postmenarche (Ex. postmenarche year 2, postmenarche year 3, etc.)
+# 2. src_subject_id
+# 3. PostMenarche_at_Baseline_Y1N0: Yes = 1, No = 0 flag, indicating if the subject was postmenarche at first report. 
+# 4. Inconsistent_Reporting_Y1N0: Yes = 1, No = 0 flag, indicating if subject reported being premenarche after reporting being postmenarche
+
+#with some tweaking to the column names and values in the "POSTMENARCHE DATA" section of this script,
+#this could be a way to filter out unwanted timepoints depending on the nature of your variable of interest. 
+#NOTE: this is an optional input. FEEL FREE TO SKIP OVER THE "POSTMENARCHE DATA" section below.
+youth <- read_csv(paste0(derivative_data, "5.0_Youth_PrePost_Menarche_10_1_25.csv"))
+parent <- read_csv(paste0(derivative_data, "5.0_Parent_PrePost_Menarche_10_1_25.csv"))
+#______________________________________________________________________________
+
+# REQUIRED: This is a csv file containing validated saliva samples and exclusions based on the quality of the saliva sample. Four columns are required: 
+
+# 1. Excluded? which contains a "0" for included and a "1" for excluded
+# 2. SubjectID: which contains the same information as src_subject_id 
+# 3. EventName: which contains the same information as eventname
+# 4. DHEAmean: Validated Salivary DHEA measurement (pg/mL)
+
+Exclusions <- read_csv(paste0(derivative_data, "DHEA_5.0_Exclusions_10_7_25.csv"))
+#______________________________________________________________________________
+```
+
+## EXCLUSIONS
+```{r}
+# Only select relevant columns for exclusion
+Exclusions <- Exclusions %>%
+  select(src_subject_id , eventname, DHEAmean, `Excluded?`)
+
+# Exclude DHEA samples with a 1 in the Exclusion column 
+Exclusions <- Exclusions %>%
+  mutate(DHEAmean = ifelse(`Excluded?`== 1, NA, DHEAmean))
+
+# Remove Excluded? column
+Exclusions <- Exclusions %>%
+  select(-`Excluded?`)
+```
+
+## POSTMENARCHE DATA
+```{r}
+
+# keep useful columns
+youth_menarche <- youth %>%
+  select(src_subject_id, first_post_event, PostMenarche_at_Baseline_Y1N0, Inconsistent_Reporting_Y1N0)
+parent_menarche <- parent %>%
+  select(src_subject_id, first_post_event, PostMenarche_at_Baseline_Y1N0, Inconsistent_Reporting_Y1N0)
+
+# remove those without a postmenarche event, and those reporting postmenarche at baseline
+youth_menarche <- youth_menarche %>%
+  filter(!is.na(first_post_event) & PostMenarche_at_Baseline_Y1N0 == 0)
+parent_menarche <- parent_menarche %>%
+  filter(!is.na(first_post_event) & PostMenarche_at_Baseline_Y1N0 == 0)
+
+# merge into DHEA data
+youth_DHEA_menarche <- youth_menarche %>%
+  left_join(Exclusions, by = "src_subject_id")
+parent_DHEA_menarche <- parent_menarche %>%
+    left_join(Exclusions, by = "src_subject_id")
+
+# make numeric versions of eventname, to compare against first postmenarche, so we can keep only premenarche
+youth_DHEA_menarche <- youth_DHEA_menarche %>%
+  mutate(eventname_num = case_when(
+    eventname == "baseline_year_1_arm_1" ~ 0,
+    eventname == "1_year_follow_up_y_arm_1" ~ 1,
+    eventname == "2_year_follow_up_y_arm_1" ~ 2,
+    eventname == "3_year_follow_up_y_arm_1" ~ 3,
+    eventname == "4_year_follow_up_y_arm_1" ~ 4))
+parent_DHEA_menarche <- parent_DHEA_menarche %>%
+    mutate(eventname_num = case_when(
+    eventname == "baseline_year_1_arm_1" ~ 0,
+    eventname == "1_year_follow_up_y_arm_1" ~ 1,
+    eventname == "2_year_follow_up_y_arm_1" ~ 2,
+    eventname == "3_year_follow_up_y_arm_1" ~ 3,
+    eventname == "4_year_follow_up_y_arm_1" ~ 4))
+
+# remove any data point at or after menarche
+youth_DHEA_menarche <- youth_DHEA_menarche %>%
+  filter(eventname_num < first_post_event)
+parent_DHEA_menarche <- parent_DHEA_menarche %>%
+  filter(eventname_num < first_post_event)
+
+#this code ensures that only premenarche data points are included in the calculation of slopes and raw differences. 
+```
+
+##MAKE DATA WIDE AND AVAILABILITY COUNTS
+```{r}
+#Format wide ABCD data according to subjectID and event
+data <- Exclusions %>%
+  pivot_wider(names_from = eventname, values_from = c(DHEAmean))
+
+#sum the number of available timepoints for each participant 
+data$available_timepoints <- rowSums(!is.na(data[, c("baseline_year_1_arm_1",
+                                                       "1_year_follow_up_y_arm_1",
+                                                       "2_year_follow_up_y_arm_1",
+                                                       "3_year_follow_up_y_arm_1",
+                                                       "4_year_follow_up_y_arm_1")]))
+```
+
+##DEMOGRAPHICS
+```{r}
+#add sex to the data frame by matching subject IDs 
+data <- data %>%
+  left_join(demo %>% filter(eventname == "baseline_year_1_arm_1") %>%
+    select(src_subject_id, demo_sex_v2),
+    by = "src_subject_id")
+
+#display timepoint totals
+table(data$available_timepoints[data$demo_sex_v2 == 1])
+table(data$available_timepoints[data$demo_sex_v2 == 2])
+```
+
+##SIMPLE RAW DIFFERENCE SCORE
+
+```{r}
+#if values are present for baseline and year 1, but no other timepoints, calculate the raw difference score. 
+data <- data %>%
+  mutate(
+    raw_difference_score = ifelse(!is.na(baseline_year_1_arm_1) &
+                                  !is.na(`1_year_follow_up_y_arm_1`) &
+                                  is.na(`2_year_follow_up_y_arm_1`) &
+                                  is.na(`3_year_follow_up_y_arm_1`) &
+                                  is.na(`4_year_follow_up_y_arm_1`),
+                                       `1_year_follow_up_y_arm_1` - `baseline_year_1_arm_1`, 
+                                       NA))
+
+
+```
+
+##PREP FOR SLOPE CALCULATION
+```{r}
+#select only interview age, subject ID and event name 
+interview_age <- interview_age %>%
+  select(src_subject_id,
+         eventname,
+         interview_age)
+
+#join interview age to the long data in a new table
+data_lm <- Exclusions %>%
+  left_join(interview_age, by = c("src_subject_id", "eventname"))
+
+#here we are imputing interview ages based on the visit timepoint.
+data_lm <- data_lm %>%
+  group_by(src_subject_id) %>%
+  filter(all(is.na(interview_age))) %>%
+  do({
+    ###Deal with missing interview ages 
+  data_lm <- data_lm %>%
+    mutate(interview_age = ifelse(is.na(interview_age) & 
+                                  eventname == "baseline_year_1_arm_1", 0, interview_age))
+  data_lm <- data_lm %>%
+    mutate(interview_age = ifelse(is.na(interview_age) & 
+                                  eventname == "1_year_follow_up_y_arm_1", 12, interview_age))
+  data_lm <- data_lm %>%
+    mutate(interview_age = ifelse(is.na(interview_age) & 
+                                  eventname == "2_year_follow_up_y_arm_1", 24, interview_age))
+  data_lm <- data_lm %>%
+    mutate(interview_age = ifelse(is.na(interview_age) & 
+                                  eventname == "3_year_follow_up_y_arm_1", 36, interview_age))
+  data_lm <- data_lm %>%
+    mutate(interview_age = ifelse(is.na(interview_age) & 
+                                  eventname == "4_year_follow_up_y_arm_1", 48, interview_age))
+  }) %>%
+  ungroup()
+
+#remove datapoints who do not have data readings ### 4598 subjects with missing datapoints
+no_data_value <- data_lm %>%
+  filter(is.na(DHEAmean) | DHEAmean == "") %>%
+  distinct(src_subject_id) %>%
+  pull(src_subject_id)
+
+data_lm <- data_lm %>%   # 37586 -> 31453, 6133 timepoints removed
+  filter(!is.na(DHEAmean) & DHEAmean != "")
+
+#remove subs that have a raw score (2 timepoints, one of them at baseline)
+already_calculated_raw <- data %>% # 2822 subjects with already calculated raw scores
+  filter(!is.na(raw_difference_score) & raw_difference_score != "") %>%
+  pull(src_subject_id)
+
+data_lm <- data_lm %>% # 31453 -> 25809, 5644 timepoints removed
+  filter(!src_subject_id %in% already_calculated_raw)
+
+#remove other datapoints with less than 3 timepoints- if they have 2 timepoints, a raw difference score is calculated. 
+less_than_three <- data_lm %>% # 2212 subjects with less than 3 timepoints
+  group_by(src_subject_id) %>%
+  filter(n() < 3) %>%
+  distinct(src_subject_id) %>%
+  pull(src_subject_id)
+
+data_lm <- data_lm %>% # 25809 -> 22651, 3158 timepoints removed
+  group_by(src_subject_id) %>%
+  filter(n() >= 3) %>%
+  ungroup()
+```
+
+##CALCULATE SLOPE
+
+```{r}
+#extract the slope of the linear model for each subject 
+data_slopes <- data_lm %>%
+  group_by(src_subject_id) %>%
+  summarise(slope_DHEAmean = lm(DHEAmean ~ interview_age)$coef[2])
+
+#attach the slopes back to the original data frame by participant
+data <- data %>%
+  left_join(data_slopes %>% select(src_subject_id, slope_DHEAmean), by = "src_subject_id")
+
+#scale slopes
+data$slope_DHEAmean_scale <- as.numeric(scale(data$slope_DHEAmean))
+
+```
+
+##COMPLEX RAW DIFFERENCE SCORE
+
+```{r}
+#Complex raw difference score and scale (follow up greater than 1yr apart)
+#creates a new data frame for participants that do not have a calculated slope or raw difference score 
+complex_raw <- data %>%
+  filter(is.na(raw_difference_score) & is.na(slope_DHEAmean))
+
+#keep only participants that have 2 timepoints of data 
+complex_raw <- complex_raw %>%
+  filter(available_timepoints == 2)
+
+#identify columns that contain dhea data
+timepoint_cols <- c("baseline_year_1_arm_1",
+                  "1_year_follow_up_y_arm_1",
+                  "2_year_follow_up_y_arm_1",
+                  "3_year_follow_up_y_arm_1",
+                  "4_year_follow_up_y_arm_1")
+
+#function determines the position of dhea columns that contain values, and returns the difference (the amount of time in years) between those two timepoints 
+time_between_visits <- function(visit, timepoints) {
+  has_value <- which(!is.na(visit[timepoints]))
+  if (length(has_value) == 2) {
+    return(diff(has_value))
+  } else {
+    return(NA)
+  }
+}
+
+#apply the time between visits function to each row of the data frame 
+complex_raw$yrs_between_visits <- apply(complex_raw, 1, 
+                                        time_between_visits, 
+                                        timepoints = timepoint_cols)
+
+#function isolates the two values present for each participant, finds the difference between the two 
+calculate_raw_diff <- function(visit, timepoints) {
+  values <- visit[timepoints]
+  values <- as.numeric(values[!is.na(values)])
+  if (length(values) == 2) {
+    return(values[2] - values[1])
+  } else {
+    return(NA)
+  }
+}
+
+#apply the calculate raw diff function rowwise to determine raw difference score in participants with timepoints greater than yr apart 
+complex_raw$raw_difference_score <- apply(complex_raw, 1, 
+                                        calculate_raw_diff, 
+                                        timepoints = timepoint_cols)
+
+#note that the participants raw difference score was greater that 1yr apart or not at baseline
+complex_raw <- complex_raw %>%
+  mutate(
+    notes = ifelse(yrs_between_visits == 1,
+                   paste("two timepoints",
+                         complex_raw$yrs_between_visits,
+                         "years apart, not at baseline"),
+                   paste("two timepoints",
+                         complex_raw$yrs_between_visits,
+                         "years apart")))
+
+#isolate raw scores and notes to be included in the greater data table 
+complex_raw <- complex_raw %>%
+  select(src_subject_id, raw_difference_score, notes)
+
+#add the complex raw scores back into the table by subject ID 
+data <- data %>% 
+  left_join(complex_raw %>% 
+              select(src_subject_id, 
+                     raw_difference_score), 
+            by = "src_subject_id") %>%
+  mutate(raw_difference_score = coalesce(raw_difference_score.y, raw_difference_score.x)) %>%
+  select(-raw_difference_score.y, -raw_difference_score.x)
+
+#add the notes column to the data frame 
+data <- data %>%
+  left_join(complex_raw %>% 
+              select(src_subject_id, 
+                     notes), 
+            by = "src_subject_id")
+```
+
+##SCALE RAW DIFFERENCE SCORE
+```{r}
+#scale raw difference scores 
+data$raw_difference_scale <- as.numeric(scale(data$raw_difference_score))
+```
+
+##PREP FOR PREMENARCHE SLOPE CALCULATION
+```{r}
+# merge in ages
+youth_DHEA_menarche <- youth_DHEA_menarche %>%
+  left_join(interview_age, by = c("src_subject_id", "eventname"))
+parent_DHEA_menarche <- parent_DHEA_menarche %>%
+  left_join(interview_age, by = c("src_subject_id", "eventname"))
+
+# no missing ages
+
+#remove timepoints that do not have data readings
+no_youth_data_value <- youth_DHEA_menarche %>% # 766 subjects missing data
+  filter(is.na(DHEAmean) | DHEAmean == "") %>%
+  distinct(src_subject_id) %>%
+  pull(src_subject_id)
+no_parent_data_value <- parent_DHEA_menarche %>% # 815 subjects missing data
+  filter(is.na(DHEAmean) | DHEAmean == "") %>%
+  distinct(src_subject_id) %>%
+  pull(src_subject_id)
+
+youth_DHEA_menarche <- youth_DHEA_menarche %>% # 8916 -> 8046, 870 timepoints removed
+  filter(!is.na(DHEAmean) & DHEAmean != "")
+parent_DHEA_menarche <- parent_DHEA_menarche %>% # 9161 -> 8243, 918 timepoints removed
+  filter(!is.na(DHEAmean) & DHEAmean != "")
+
+# count number of valid datapoints
+youth_DHEA_menarche <- youth_DHEA_menarche %>%
+  group_by(src_subject_id) %>%
+  mutate(premenarche_timepoints = n())
+parent_DHEA_menarche <- parent_DHEA_menarche %>%
+  group_by(src_subject_id) %>%
+  mutate(premenarche_timepoints = n())
+
+# remove those with only 1 timepoint
+youth_DHEA_menarche <- youth_DHEA_menarche %>%
+  filter(premenarche_timepoints > 1)
+parent_DHEA_menarche <- parent_DHEA_menarche %>%
+  filter(premenarche_timepoints > 1)
+```
+
+
+##CALCULATE PREMENARCHE DIFFERENCES AND SLOPES
+```{r}
+# calculate raw differences
+youth_DHEA_menarche <- youth_DHEA_menarche %>%
+  group_by(src_subject_id) %>%
+  mutate(scores = list(na.omit(DHEAmean))) %>%
+  rowwise() %>%
+  mutate(raw_difference_premenarche = if_else(premenarche_timepoints == 2, 
+                                                last(scores) - scores[1], NA)) %>%
+  select(-scores)
+parent_DHEA_menarche <- parent_DHEA_menarche %>%
+  group_by(src_subject_id) %>%
+  mutate(scores = list(na.omit(DHEAmean))) %>%
+  rowwise() %>%
+  mutate(raw_difference_premenarche = if_else(premenarche_timepoints == 2, 
+                                                last(scores) - scores[1], NA)) %>%
+  select(-scores)
+
+#scale differences
+youth_DHEA_menarche$raw_difference_premenarche_scale <- as.numeric(scale(youth_DHEA_menarche$raw_difference_premenarche))
+parent_DHEA_menarche$raw_difference_premenarche_scale <- as.numeric(scale(parent_DHEA_menarche$raw_difference_premenarche))
+
+# calculate slopes
+youth_slopes <- youth_DHEA_menarche %>%
+  group_by(src_subject_id) %>%
+  summarise(slope_DHEAmean_premenarche = lm(DHEAmean ~ interview_age)$coef[2])
+parent_slopes <- parent_DHEA_menarche %>%
+  group_by(src_subject_id) %>%
+  summarise(slope_DHEAmean_premenarche = lm(DHEAmean ~ interview_age)$coef[2])
+
+# merge slopes with menarche data
+youth_DHEA_menarche <- youth_DHEA_menarche %>%
+    left_join(youth_slopes %>% select(src_subject_id, slope_DHEAmean_premenarche), by = "src_subject_id")
+parent_DHEA_menarche <- parent_DHEA_menarche %>%
+    left_join(parent_slopes %>% select(src_subject_id, slope_DHEAmean_premenarche), by = "src_subject_id")
+
+# reset 2 timepoint slopes to NA
+youth_DHEA_menarche <- youth_DHEA_menarche %>%
+  mutate(slope_DHEAmean_premenarche = if_else(premenarche_timepoints == 2, NA, slope_DHEAmean_premenarche))
+
+#scale slopes
+youth_DHEA_menarche$slope_DHEAmean_premenarche_scale <- as.numeric(scale(youth_DHEA_menarche$slope_DHEAmean_premenarche))
+parent_DHEA_menarche$slope_DHEAmean_premenarche_scale <- as.numeric(scale(parent_DHEA_menarche$slope_DHEAmean_premenarche))
+```
+
+##ADD NOTES TO RAW DIFFERENCES
+
+```{r}
+# find difference of visits for those with 2 timepoints
+youth_DHEA_menarche <- youth_DHEA_menarche %>%
+  group_by(src_subject_id) %>%
+  mutate(visits = list(na.omit(eventname_num))) %>%
+  rowwise() %>%
+  mutate(yrs_between_visits = if_else(premenarche_timepoints == 2, 
+                                                last(visits) - visits[1], NA)) %>%
+  select(-visits)
+parent_DHEA_menarche <- parent_DHEA_menarche %>%
+  group_by(src_subject_id) %>%
+  mutate(visits = list(na.omit(eventname_num))) %>%
+  rowwise() %>%
+  mutate(yrs_between_visits = if_else(premenarche_timepoints == 2, 
+                                                last(visits) - visits[1], NA)) %>%
+  select(-visits)
+
+#note if the participants raw difference score was greater that 1yr apart
+youth_DHEA_menarche <- youth_DHEA_menarche %>%
+  rowwise() %>%
+  mutate(premenarche_notes = ifelse(yrs_between_visits == 1,
+                        NA,
+                        paste("two timepoints", yrs_between_visits, "years apart"))) %>%
+  select(-yrs_between_visits)
+parent_DHEA_menarche <- parent_DHEA_menarche %>%
+    rowwise() %>%
+  mutate(premenarche_notes = ifelse(yrs_between_visits == 1,
+                        NA,
+                        paste("two timepoints", yrs_between_visits, "years apart"))) %>%
+  select(-yrs_between_visits)
+```
+
+##FORMAT DATAFRAMES FOR EXPORT
+
+```{r}
+# premenarche
+premenarche_youth <- data %>%
+  left_join(youth_DHEA_menarche %>% select(src_subject_id, first_post_event, premenarche_timepoints, raw_difference_premenarche, raw_difference_premenarche_scale, slope_DHEAmean_premenarche, slope_DHEAmean_premenarche_scale, premenarche_notes, PostMenarche_at_Baseline_Y1N0, Inconsistent_Reporting_Y1N0), by = "src_subject_id") %>%
+  unique()
+
+premenarche_parent <- data %>%
+  left_join(parent_DHEA_menarche %>% select(src_subject_id, first_post_event, premenarche_timepoints, raw_difference_premenarche, raw_difference_premenarche_scale, slope_DHEAmean_premenarche, slope_DHEAmean_premenarche_scale, premenarche_notes, PostMenarche_at_Baseline_Y1N0, Inconsistent_Reporting_Y1N0), by = "src_subject_id") %>%
+  unique()
+
+# reorganize
+premenarche_youth <- premenarche_youth %>%
+  select(src_subject_id, demo_sex_v2, first_post_event, premenarche_timepoints,
+         slope_DHEAmean_premenarche, slope_DHEAmean_premenarche_scale, raw_difference_premenarche, raw_difference_premenarche_scale,
+         premenarche_notes, PostMenarche_at_Baseline_Y1N0, Inconsistent_Reporting_Y1N0,
+         baseline_year_1_arm_1, `1_year_follow_up_y_arm_1`, `2_year_follow_up_y_arm_1`, `3_year_follow_up_y_arm_1`, `4_year_follow_up_y_arm_1`)
+premenarche_parent <- premenarche_parent %>%
+    select(src_subject_id, demo_sex_v2, first_post_event, premenarche_timepoints,
+         slope_DHEAmean_premenarche, slope_DHEAmean_premenarche_scale, raw_difference_premenarche, raw_difference_premenarche_scale, 
+         premenarche_notes, PostMenarche_at_Baseline_Y1N0, Inconsistent_Reporting_Y1N0,
+         baseline_year_1_arm_1, `1_year_follow_up_y_arm_1`, `2_year_follow_up_y_arm_1`, `3_year_follow_up_y_arm_1`, `4_year_follow_up_y_arm_1`)
+
+data <- data %>%
+  select(src_subject_id, demo_sex_v2, available_timepoints, slope_DHEAmean, slope_DHEAmean_scale, raw_difference_score, raw_difference_scale,
+         notes, baseline_year_1_arm_1, `1_year_follow_up_y_arm_1`, `2_year_follow_up_y_arm_1`, `3_year_follow_up_y_arm_1`, `4_year_follow_up_y_arm_1`)
+```
+
+##WRITE CSV
+
+```{r}
+#write the completed data frame to a csv 
+write_csv(data, write_file)
+write_csv(premenarche_youth, youth_file)
+write_csv(premenarche_parent, parent_file)
+```
