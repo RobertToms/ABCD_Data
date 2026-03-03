@@ -2,12 +2,12 @@
 # CROSS_recon-all_parallel.sh
 # Author: Robert Toms, robert.toms@utdallas.edu
 # Date: 9/4/2025
-# Path: /path/to/FreeSurfer_Scripts/CROSS_recon-all_parallel.sh
-# NOTE: Optimized for the ABCD 6.0 Release, if used for another release, changes may need to be made to ensure compliance with BIDS naming conventions
+# Path: /home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/CROSS_recon-all_parallel.sh
 ##########################################################################
 
-CurrentBatchFile=/path/to/FreeSurfer_Scripts/NiftiList.txt
-BatchReport=/path/to/FreeSurfer_Scripts/Batch_Report.txt
+
+CurrentBatchFile=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/NiftiList.txt
+BatchReport=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/Batch_Report.txt
 
 TargetBatch=()
 JobsNum=0
@@ -32,14 +32,14 @@ echo ""
 # Write into a temporary .txt file
 #######################
 
-CrossCommands=/path/to/FreeSurfer_Scripts/temp/cross_commands.txt
+CrossCommands=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/temp/cross_commands.txt
 
 echo "RUNNING RECON-ALL CROSS:"
 for subject in ${TargetBatch[@]}; do
 	sub=$(echo "$subject" | cut -d'^' -f1)
 	visit=$(echo "$subject" | cut -d'^' -f2)
 	nifti=$(echo "$subject" | cut -d'^' -f3)
-	NiftiPath=($(ls /path/to/ABCD_6.0/mri_data/${sub}/${visit}/anat/${nifti}))
+	NiftiPath=($(ls /mnt/md0/ScratchPad_/ABCD/ABCD_6.0/mri_data/${sub}/${visit}/anat/${nifti}))
 	
 	echo "recon-all -subjid ${sub}_${visit} -i ${NiftiPath} -all"
 	echo "recon-all -subjid ${sub}_${visit} -i ${NiftiPath} -all" >> $CrossCommands
@@ -49,7 +49,6 @@ done
 #########################
 # Run CROSS Recon-all in parallel
 #########################
-# relies on GNU Parallel for parallelization: https://www.gnu.org/software/parallel/
 
 cat $CrossCommands | parallel -j $JobsNum
 
@@ -57,7 +56,7 @@ cat $CrossCommands | parallel -j $JobsNum
 # Delete cross_commands.txt so the next batch can make a new one
 #########################
 
-rm /path/to/FreeSurfer_Scripts/temp/cross_commands.txt
+rm /home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/temp/cross_commands.txt
 
 #########################
 # Write results into BatchReport

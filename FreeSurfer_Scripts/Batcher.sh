@@ -2,8 +2,7 @@
 # Batcher.sh
 # Author: Robert Toms, robert.toms@utdallas.edu
 # Date: 9/4/2025
-# Path: /path/to/FreeSurfer_Scripts/Batcher.sh
-# NOTE: Optimized for the ABCD 6.0 Release, if used for another release, changes may need to be made to ensure compliance with BIDS naming conventions
+# Path: /home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/Batcher.sh
 ##########################################################################
 
 # set up FreeSurfer Environment, if not already set up
@@ -15,10 +14,18 @@ source $FREESURFER_HOME/SetUpFreeSurfer.sh
 
 FullBatch=()
 JobsNum=0
+Batch_Num=1
 
-FullListFile=/path/to/FreeSurfer_Scripts/LargeNiftiList.txt
-CurrentBatchFile=/path/to/FreeSurfer_Scripts/NiftiList.txt
-BatchReport=/path/to/FreeSurfer_Scripts/Batch_Report.txt
+### SET BATCH SIZE ### -- Maximum number of SCANS to process at a time, not number of subjects
+BatchSize=20
+
+FullListFile=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/LargeNiftiList.txt
+CurrentBatchFile=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/NiftiList.txt
+BatchReport=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/Batch_Report.txt
+
+# count number of batches
+total_scans=$(cat $FullListFile | wc -l)
+total_batches=$(( (total_scans + 19) / $BatchSize ))
 
 # Get populate array with FULL list of nii scans
 mapfile -t FullBatch < $FullListFile
@@ -43,15 +50,11 @@ done
 echo " "
 echo "Total unique subjects: ${#subjects[@]}"
 echo "Total number of scans: $JobsNum"
-
+echo "Total Batches: $total_batches"
 
 ###########################
 ####### Run Full Longitudinal Pipeline in batches of BatchSize
 ###########################
-
-### SET BATCH SIZE ### -- Maximum number of SCANS to process at a time, not number of subjects
-# This should be based on how much RAM you have at your disposal. For FreeSurfer 8.0.0, it is reasonable to assume up to 24GB per scan.
-BatchSize=21
 
 # Isolate Current Batch and Run in succession
 current_batch_size=0
@@ -64,23 +67,44 @@ for id in "${!subjects[@]}"; do 		# for each subject
 	# if adding their scans will exceed the Batch Size, run batch
 	if (( current_batch_size + number_of_scans > BatchSize )); then	
 		final_batch_size=$current_batch_size
-				
+		
 		# Delineate between current batch and next batch
 		(( JobsNum -= final_batch_size ))
 		echo "$id exceeds Batch Size, saved for next batch"
 		echo "$final_batch_size for this batch"
 		echo "" >> $BatchReport
 		echo "$final_batch_size for this batch" >> $BatchReport
-		echo "$JobsNum scans remaining"
-				
+		echo "$JobsNum scans remaining"	 >> $BatchReport
+		echo "$JobsNum scans remaining"	
+		echo "Running Batch $Batch_Num / $total_batches" >> $BatchReport
+		echo "Running Batch $Batch_Num / $total_batches"
+		
 		# Run Longitudinal FreeSurfer Loop
-			/path/to/FreeSurfer_Scripts/Longitudinal_Pipeline.sh
+		batch_start_time=$(date)
+			/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/Longitudinal_Pipeline.sh
+		batch_end_time=$(date)
+		
+		# print estimated time remaining: Length of Pipeline * number of batches left
+		Time1=$(date -d "$batch_start_time" +%s)
+		Time2=$(date -d "$batch_end_time" +%s)
+		time_elapsed=$((Time2-Time1))
+		batches_left=$((total_batches-Batch_Num-1))
+		remaining_time=$((time_elapsed*batches_left))
+		
+		SECS=$(($remaining_time % 60))
+		MINS=$(($remaining_time / 60 % 60))
+		HOURS=$(($remaining_time / 3600 % 24))
+		DAYS=$(($remaining_time / 86400))
+		echo "Estimated Time Remaining: ${DAYS} days ${HOURS} hrs ${MINS} mins ${SECS} secs"
+		echo "Estimated Time Remaining: ${DAYS} days ${HOURS} hrs ${MINS} mins ${SECS} secs" >> $BatchReport
+		echo "" >> $BatchReport
 		# wipe NiftiList.txt
 		> $CurrentBatchFile
 		
-		# reset batch size trackers
+		# reset batch size trackers, increment batch_num
 		current_batch_size=0
 		final_batch_size=0
+		((Batch_Num++))
 	fi
 
 	# if they won't exceed Batch Size, add them to the current batch
@@ -94,35 +118,14 @@ for id in "${!subjects[@]}"; do 		# for each subject
 		echo "$current_batch_size for this batch"
 		echo "" >> $BatchReport
 		echo "Final Run: $current_batch_size for this batch"  >> $BatchReport
+		echo "Running Batch $Batch_Num / $total_batches" >> $BatchReport
+		echo "Running Batch $Batch_Num / $total_batches"
 		# Run Longitudinal FreeSurfer Loop
-			/path/to/FreeSurfer_Scripts/Longitudinal_Pipeline.sh
+			/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/Longitudinal_Pipeline.sh
 		# Wipe NiftiList.txt
 		> $CurrentBatchFile
 		JobsNum=0
 	fi
 done
-
-###########################
-####### Pull Volumes
-###########################
-
-FinishedList=/path/to/Post_Processing/Finished_Niftis.txt
-
-# Pull Volumes
-/path/to/Post_Processing/Female_6.0_Volumes.sh
-
-# make spacer in finished list
-echo " " >> $FinishedList
-
-# Write processed/pulled niftis into Finished List
-for nii in $(cat $FullListFile); do
-	echo "$nii" >> $FinishedList
-done
-
-# Wipe Nifti List to fill with new batch
-> $FullListFile
-
-
-
 
 

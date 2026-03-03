@@ -2,12 +2,11 @@
 # LONG_recon-all_parallel.sh
 # Author: Robert Toms, robert.toms@utdallas.edu
 # Date: 9/4/2025
-# Path: /path/to/FreeSurfer_Scripts/LONG_recon-all_parallel.sh
-# NOTE: Optimized for the ABCD 6.0 Release, if used for another release, changes may need to be made to ensure compliance with BIDS naming conventions
+# Path: /home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/LONG_recon-all_parallel.sh
 ##########################################################################
 
-CurrentBatchFile=/path/to/FreeSurfer_Scripts/NiftiList.txt
-BatchReport=/path/to/FreeSurfer_Scripts/Batch_Report.txt
+CurrentBatchFile=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/NiftiList.txt
+BatchReport=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/Batch_Report.txt
 
 TargetBatch=()
 JobsNum=0
@@ -34,9 +33,9 @@ echo " "
 # Write into a temporary .txt file
 #######################
 
-LongCommands=/path/to/FreeSurfer_Scripts/temp/long_commands.txt
+LongCommands=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/temp/long_commands.txt
 
-echo "RUNNING RECON-ALL CROSS:"
+echo "RUNNING RECON-ALL LONG:"
 for subject in ${TargetBatch[@]}; do
 	sub=$(echo "$subject" | cut -d'^' -f1)
 	visit=$(echo "$subject" | cut -d'^' -f2)
@@ -48,7 +47,6 @@ done
 #########################
 # Run LONG Recon-all in parallel
 #########################
-# relies on GNU Parallel for parallelization: https://www.gnu.org/software/parallel/
 
 cat $LongCommands | parallel -j $JobsNum
 
@@ -56,7 +54,7 @@ cat $LongCommands | parallel -j $JobsNum
 # Delete long_commands.txt so the next batch can make a new one
 #########################
 
-rm /path/to/FreeSurfer_Scripts/temp/long_commands.txt
+rm /home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/temp/long_commands.txt
 
 #########################
 # Write results into BatchReport

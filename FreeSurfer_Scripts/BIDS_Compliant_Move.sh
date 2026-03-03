@@ -1,13 +1,12 @@
 ##########################################################################
 # BIDS_Compliant_Move.sh
-# Author: Robert Toms, robert.toms@utdallas.edu
+# Author: Robert Toms
 # Date: 9/4/2025
-# Path: /path/to/FreeSurfer_Scripts/BIDS_Compliant_Move.sh
-# NOTE: Optimized for the ABCD 6.0 Release, if used for another release, changes may need to be made to ensure compliance with BIDS naming conventions
+# Path: /home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/BIDS_Compliant_Move.sh
 ##########################################################################
 
-CurrentBatchFile=/path/to/FreeSurfer_Scripts/NiftiList.txt
-BatchReport=/path/to/FreeSurfer_Scripts/Batch_Report.txt
+CurrentBatchFile=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/NiftiList.txt
+BatchReport=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/Batch_Report.txt
 
 TargetBatch=()
 JobsNum=0

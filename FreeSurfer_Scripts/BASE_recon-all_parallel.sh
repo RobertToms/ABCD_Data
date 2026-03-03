@@ -2,12 +2,11 @@
 # BASE_recon-all_parallel.sh
 # Author: Robert Toms, robert.toms@utdallas.edu
 # Date: 9/4/2025
-# Path: /path/to/FreeSurfer_Scripts/BASE_recon-all_parallel.sh
-# NOTE: Optimized for the ABCD 6.0 Release, if used for another release, changes may need to be made to ensure compliance with BIDS naming conventions
+# Path: /home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/BASE_recon-all_parallel.sh
 ##########################################################################
 
-CurrentBatchFile=/path/to/FreeSurfer_Scripts/NiftiList.txt
-BatchReport=/path/to/FreeSurfer_Scripts/Batch_Report.txt
+CurrentBatchFile=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/NiftiList.txt
+BatchReport=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/Batch_Report.txt
 
 TargetBatch=()
 JobsNum=0
@@ -39,9 +38,9 @@ echo " "
 # Construct BASE Recon-All Commands
 #######################
 
-### In future releases, where longitudinal scans have more than 5 timepoints, add additional "if" clauses as needed.
+### In future releases, where longitudinal scans have more than 5 timepoints, add additional if/then clauses as needed.
 
-BaseCommands=/path/to/FreeSurfer_Scripts/temp/base_commands.txt
+BaseCommands=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/temp/base_commands.txt
 
 for id in "${!subjects[@]}"; do
 	read -a scans <<< "${subjects[$id]}"	# get their list of scans
@@ -69,8 +68,6 @@ echo ""
 #########################
 # Run BASE Recon-all in parallel
 #########################
-# relies on GNU Parallel for parallelization: https://www.gnu.org/software/parallel/
-
 echo "RUNNING RECON-ALL BASE:"
 cat $BaseCommands
 
@@ -81,7 +78,7 @@ cat $BaseCommands | parallel -j $JobsNum
 # Delete Base Commands so the next batch can make a new one
 #########################
 
-rm /path/to/FreeSurfer_Scripts/temp/base_commands.txt
+rm /home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/temp/base_commands.txt
 
 # prints finish status of each individual BASE recon-all
 for id in "${!subjects[@]}"; do

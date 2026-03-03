@@ -2,12 +2,11 @@
 # SegmentHA_T1_Long_parallel.sh
 # Author: Robert Toms, robert.toms@utdallas.edu
 # Date: 9/4/2025
-# Path: /path/to/FreeSurfer_Scripts/SegmentHA_T1_Long_parallel.sh
-# NOTE: Optimized for the ABCD 6.0 Release, if used for another release, changes may need to be made to ensure compliance with BIDS naming conventions
+# Path: /home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/SegmentHA_T1_Long_parallel.sh
 ##########################################################################
 
-CurrentBatchFile=/path/to/FreeSurfer_Scripts/NiftiList.txt
-BatchReport=/path/to/FreeSurfer_Scripts/Batch_Report.txt
+CurrentBatchFile=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/NiftiList.txt
+BatchReport=/home/kate/Desktop/6.0_Update/FreeSurfer_Scripts/Batch_Report.txt
 
 TargetBatch=()
 JobsNum=0
@@ -39,7 +38,6 @@ echo " "
 ########################
 ### Run segmentHA_T1_long.sh in parallel
 ########################
-# relies on GNU Parallel for parallelization: https://www.gnu.org/software/parallel/
 
 echo ${subjectIDs[@]} | tr ' ' '\n' | parallel 'IFS="^" read -ra parts <<< {} && echo "Queueing ${parts[0]}_long"'
 echo ${subjectIDs[@]} | tr ' ' '\n' | parallel -j $JobsNum 'IFS="^" read -ra parts <<< {} && segmentHA_T1_long.sh ${parts[0]}_long $SUBJECTS_DIR'
